@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import re
 from requests import Session
 import itertools
+from PIL import Image, ImageDraw, ImageColor
 
 from sssekai.crypto.APIManager import decrypt, SEKAI_APIMANAGER_KEYSETS
 import msgpack
@@ -81,6 +82,13 @@ PLACE_NAME = {
     "8": "忘れ去られた場所",
 }
 
+PLACE_MAP_NAME = {
+    '5': 'grasslands',
+    '6': 'beach',
+    '7': 'flowergarden',
+    '8': 'memorialplace',
+}
+
 FIXTURE_NAME = {
     '1001': '闊葉樹',
     '1002': '針葉樹',
@@ -151,6 +159,46 @@ class ResourcePlace:
     fixture_name: str
     fixture_all_items: list[OtherItems]
     raw_data: list[DiamondPlace]
+
+
+class SekaiMapDraw:
+
+    def __init__(self) -> None:
+        self.maps: dict[str, Image.Image] = {}
+        for k, v in PLACE_MAP_NAME.items():
+            with Image.open(f'asset/{v}.png') as im:
+                im.load()
+            self.maps[k] = im
+        self.unit_pix = 80
+
+    def draw_pos(
+        self,
+        place_name: str,
+        position_x: int,
+        position_z: int,
+    ) -> Optional[tuple[int, int]]:
+        if place_name not in self.maps:
+            return None
+        img = self.maps[place_name]
+        center_x, center_z = img.width // 2, img.height // 2
+        center_x += position_x * self.unit_pix
+        center_z -= position_z * self.unit_pix
+        return center_x, center_z
+
+    def get_place_img(self, place_name: str, position_x: int, position_z: int):
+        if place_name not in self.maps:
+            return None
+        map_copy = self.maps[place_name].copy()
+        pos = self.draw_pos(place_name, position_x, position_z)
+        if not pos:
+            return None
+
+        draw = ImageDraw.Draw(map_copy)
+        ink = ImageColor.colormap['red']
+        draw.circle(pos, 10, fill=ink)
+        croped = map_copy.crop(
+            (pos[0] - 250, pos[1] - 250, pos[0] + 250, pos[1] + 250))
+        return croped
 
 
 class SekaiResources:

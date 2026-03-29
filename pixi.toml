@@ -14,11 +14,12 @@ webui = "python webapp.py"
 # command: ["mitmweb", "-s", "/app/addon.py", "--mode", "wireguard", "--mode", "regular", "--set", "listen_port=51820", "--set", "web_host=0.0.0.0", "--set", "web_password=123456"]
 
 [dependencies]
-python = "3.13.*"
+python = ">=3.14.3,<3.15"
 pyperclip = ">=1.11.0,<2"
-supervisor = ">=4.2.5,<5"
+supervisor = ">=4.3.0,<5"
 
 [pypi-dependencies]
-sssekai = ">=0.7.62, <0.8"
+sssekai = ">=0.8.0, <0.9"
 mitmproxy = ">=12.2.1, <13"
-nicegui = ">=3.4.1, <4"
+nicegui = ">=3.9.0, <4"
+pillow = ">=12.1.1, <13"

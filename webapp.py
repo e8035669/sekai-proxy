@@ -261,8 +261,7 @@ class MainPage():
                 with ui.row().classes('items-center gap-4'):
                     self.checkbox_filter_current = ui.checkbox(
                         '僅顯示現在可得的素材',
-                        on_change=self.on_res_type_change
-                    ).classes('flex-wrap')
+                        on_change=self.on_res_type_change).classes('flex-wrap')
 
                 with ui.row().classes('items-center gap-4'):
                     ui.label('選擇素材').classes('font-medium')
@@ -345,6 +344,8 @@ class MainPage():
         if not found_resources:
             ui.label('No Resources Found').classes('text-gray-500')
             return
+        ui.label(f'Found {len(found_resources)} places').classes(
+            'text-green-600')
 
         with ui.grid().classes('w-full grid grid-cols-1 md:grid-cols-2 gap-4'):
             for res in found_resources:
