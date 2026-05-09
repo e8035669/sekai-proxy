@@ -67,7 +67,6 @@ class Storage:
         self.event = Event[str]()
         self.last_found_diamonds: dict[str, LastDiamondStatus] = {}
         self.last_harvest_map: dict[str, LastHarvestMapStatus] = {}
-        self.append_example('123456')
         pass
 
     @classmethod
