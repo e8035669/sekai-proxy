@@ -8,7 +8,7 @@ from datetime import datetime
 import time
 import json
 
-from utils import DiamondPlace, ResourcePlace, SekaiResources, SekaiTool, NetworkPackage
+from utils import DiamondPlace, ResourcePlace, SekaiMapDraw, SekaiResources, SekaiTool, NetworkPackage
 from manager import QueueManager
 
 
@@ -67,6 +67,7 @@ class Storage:
         self.event = Event[str]()
         self.last_found_diamonds: dict[str, LastDiamondStatus] = {}
         self.last_harvest_map: dict[str, LastHarvestMapStatus] = {}
+        self.append_example('123456')
         pass
 
     @classmethod
@@ -226,6 +227,9 @@ class InitialPage():
 class MainPage():
 
     def __init__(self):
+        pass
+
+    async def show(self):
         with ui.header().classes('items-center'):
             with ui.row().classes('w-full max-w-3xl mx-auto'):
                 ui.label('Sekai Treasure').props('color=white').classes(
@@ -272,7 +276,7 @@ class MainPage():
                         on_change=self.show_resources.refresh,
                     ).classes('flex-grow')
 
-            self.show_resources()
+            await self.show_resources()
 
             # ui.button('Test Function',
             #           on_click=lambda _: Storage.instance().append_example(
@@ -317,7 +321,7 @@ class MainPage():
             self.show_resources.refresh()
 
     @ui.refreshable_method
-    def show_resources(self):
+    async def show_resources(self):
         storage = Storage.instance()
         status = storage.last_harvest_map.get(self.current_id)
         if not status:
@@ -338,14 +342,16 @@ class MainPage():
         found_resources = SekaiTool.extract_resources(harvest_map,
                                                       str(selected_res_type),
                                                       int(selected_res_id))
-        self.show_resources0(found_resources)
+        await self.show_resources0(found_resources)
 
-    def show_resources0(self, found_resources: list[ResourcePlace]):
+    async def show_resources0(self, found_resources: list[ResourcePlace]):
         if not found_resources:
             ui.label('No Resources Found').classes('text-gray-500')
             return
         ui.label(f'Found {len(found_resources)} places').classes(
             'text-green-600')
+
+        map_containers = []
 
         with ui.grid().classes('w-full grid grid-cols-1 md:grid-cols-2 gap-4'):
             for res in found_resources:
@@ -375,6 +381,21 @@ class MainPage():
                                     ).classes(
                                         'text-sm bg-gray-100 px-2 py-1 rounded'
                                     )
+
+                    container = ui.column().classes('w-full')
+                    with container:
+                        ui.spinner()
+                    map_containers.append((container, res.site_id,
+                                           res.position_x, res.position_z))
+
+        map_draw = await run.io_bound(SekaiMapDraw.instance)
+        for container, site_id, px, pz in map_containers:
+            map_img = await run.io_bound(map_draw.get_place_img, site_id, px,
+                                         pz)
+            container.clear()
+            if map_img is not None:
+                with container:
+                    ui.image(map_img)
 
     @ui.refreshable_method
     def show_diamonds(self):
@@ -421,11 +442,12 @@ class MainPage():
 
 
 @ui.page('/')
-def main():
+async def main():
     if 'user_id' not in app.storage.user:
         InitialPage()
     else:
-        MainPage()
+        main_page = MainPage()
+        await main_page.show()
 
 
 # @ui.page('/')

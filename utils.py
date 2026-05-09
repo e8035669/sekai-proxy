@@ -5,6 +5,7 @@ import re
 from requests import Session
 import itertools
 from PIL import Image, ImageDraw, ImageColor
+import logging
 
 from sssekai.crypto.APIManager import decrypt, SEKAI_APIMANAGER_KEYSETS
 import msgpack
@@ -83,10 +84,10 @@ PLACE_NAME = {
 }
 
 PLACE_MAP_NAME = {
-    '5': 'grasslands',
-    '6': 'beach',
-    '7': 'flowergarden',
-    '8': 'memorialplace',
+    5: 'grasslands',
+    6: 'beach',
+    7: 'flowergarden',
+    8: 'memorialplace',
 }
 
 FIXTURE_NAME = {
@@ -99,6 +100,7 @@ FIXTURE_NAME = {
     '2003': '鐵礦',
     '2004': '玻璃礦',
     '2005': '石英礦',
+    '2006': '鑽石礦',
     '3001': '工具箱',
     '4001': '植物',
     '4002': '發光的植物(幸運草)',
@@ -150,6 +152,7 @@ class ResourceIndex(NamedTuple):
 
 @dataclass
 class ResourcePlace:
+    site_id: int
     resource_name: str
     place_name: str
     position_x: int
@@ -162,43 +165,100 @@ class ResourcePlace:
 
 
 class SekaiMapDraw:
+    INSTANCE = None
 
     def __init__(self) -> None:
-        self.maps: dict[str, Image.Image] = {}
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.maps: dict[int, Image.Image] = {}
         for k, v in PLACE_MAP_NAME.items():
             with Image.open(f'asset/{v}.png') as im:
                 im.load()
             self.maps[k] = im
         self.unit_pix = 80
+        self.logger.info('Load images %s', len(self.maps))
 
-    def draw_pos(
+    @classmethod
+    def instance(cls):
+        if cls.INSTANCE is None:
+            cls.INSTANCE = SekaiMapDraw()
+        return cls.INSTANCE
+
+    def get_pos(
         self,
-        place_name: str,
+        site_id: int,
         position_x: int,
         position_z: int,
     ) -> Optional[tuple[int, int]]:
-        if place_name not in self.maps:
+        if site_id not in self.maps:
             return None
-        img = self.maps[place_name]
+        img = self.maps[site_id]
         center_x, center_z = img.width // 2, img.height // 2
         center_x += position_x * self.unit_pix
         center_z -= position_z * self.unit_pix
         return center_x, center_z
 
-    def get_place_img(self, place_name: str, position_x: int, position_z: int):
-        if place_name not in self.maps:
+    def get_place_img(self, site_id: int, x: int, z: int):
+        """要繪製寶藏的位置, 會標記(0,0)地圖進入點位置, 以及(x, z)的寶藏位置
+        , 然後適當裁切地圖, 只要聚焦顯示地圖進入點和寶藏位置就好
+        """
+        if site_id not in self.maps:
             return None
-        map_copy = self.maps[place_name].copy()
-        pos = self.draw_pos(place_name, position_x, position_z)
-        if not pos:
+        map_copy = self.maps[site_id].copy()
+        entry_pos = self.get_pos(site_id, 0, 0)
+        treasure_pos = self.get_pos(site_id, x, z)
+        if not entry_pos or not treasure_pos:
             return None
 
         draw = ImageDraw.Draw(map_copy)
-        ink = ImageColor.colormap['red']
-        draw.circle(pos, 10, fill=ink)
-        croped = map_copy.crop(
-            (pos[0] - 250, pos[1] - 250, pos[0] + 250, pos[1] + 250))
-        return croped
+
+        # 繪製入口 (0,0) - 藍色菱形
+        blue = ImageColor.colormap['blue']
+        ex, ey = entry_pos
+        diamond_size = 16
+        draw.polygon(
+            [(ex, ey - diamond_size), (ex + diamond_size, ey),
+             (ex, ey + diamond_size), (ex - diamond_size, ey)],
+            fill=blue,
+        )
+
+        # 繪製寶藏位置 (x, z) - 紅色叉叉
+        red = ImageColor.colormap['red']
+        tx, ty = treasure_pos
+        cross_size = 24
+        draw.line([(tx - cross_size, ty - cross_size),
+                   (tx + cross_size, ty + cross_size)],
+                  fill=red,
+                  width=10)
+        draw.line([(tx - cross_size, ty + cross_size),
+                   (tx + cross_size, ty - cross_size)],
+                  fill=red,
+                  width=10)
+
+        # 裁切地圖, 聚焦入口和寶藏位置 (正方形)
+        padding = 150
+        min_size = 400
+        cx, cy = (ex + tx) // 2, (ey + ty) // 2
+        half = max(abs(ex - tx), abs(ey - ty), min_size) // 2 + padding
+
+        # 限制在圖片範圍內，並保持正方形
+        min_x = max(0, cx - half)
+        min_y = max(0, cy - half)
+        max_x = min(map_copy.width, cx + half)
+        max_y = min(map_copy.height, cy + half)
+
+        side = min(max_x - min_x, max_y - min_y)
+        if max_x - min_x > side:
+            center = (min_x + max_x) // 2
+            min_x = center - side // 2
+            max_x = min_x + side
+        if max_y - min_y > side:
+            center = (min_y + max_y) // 2
+            min_y = center - side // 2
+            max_y = min_y + side
+
+        cropped = map_copy.crop((min_x, min_y, max_x, max_y))
+        cropped.thumbnail((600, 600))
+        return cropped
 
 
 class SekaiResources:
@@ -513,8 +573,8 @@ class SekaiTool:
                     other_items = cls.summary_other_item(drops, pos_x, pos_z)
                     raw_data = [DiamondPlace(site_id, drop)]
 
-                    res = ResourcePlace(res_name, place_name, pos_x, pos_z,
-                                        quantity, limit, fixture_name,
+                    res = ResourcePlace(site_id, res_name, place_name, pos_x,
+                                        pos_z, quantity, limit, fixture_name,
                                         other_items, raw_data)
                     ret[index] = res
                 else:

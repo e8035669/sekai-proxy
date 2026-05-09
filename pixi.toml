@@ -8,7 +8,7 @@ version = "0.1.0"
 [tasks]
 dump = "mitmdump -s addon.py"
 web1 = "mitmweb -s addon.py --mode wireguard --set confdir=data/mitmproxy --set listen_port=51820 --set web_host=0.0.0.0 --set web_port=8081 --set web_password=123456"
-web2 = "mitmweb -s addon.py --mode regular --set confdir=data/mitmproxy --set listen_port=51820 --set web_host=0.0.0.0 --set web_port=8082 --set web_password=123456 --proxyauth=123456:123456"
+web2 = "mitmweb -s addon.py --mode regular --set confdir=data/mitmproxy --set listen_port=51821 --set web_host=0.0.0.0 --set web_port=8082 --set web_password=123456 --proxyauth=123456:123456"
 webui = "python webapp.py"
 
 # command: ["mitmweb", "-s", "/app/addon.py", "--mode", "wireguard", "--mode", "regular", "--set", "listen_port=51820", "--set", "web_host=0.0.0.0", "--set", "web_password=123456"]
