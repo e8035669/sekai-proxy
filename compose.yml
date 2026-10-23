@@ -16,6 +16,7 @@ services:
       TS_USERSPACE: "false"
       TS_STATE_DIR: /var/lib/tailscale
       TS_EXTRA_ARGS: --advertise-exit-node
+      TS_DEBUG_FIREWALL_MODE: nftables
     volumes:
       - ./data/tailscale:/var/lib/tailscale
       - ./tailscale/entrypoint.sh:/entrypoint.sh:ro
