@@ -1,14 +1,41 @@
 services:
-  proxy:
-    image: ghcr.io/e8035669/sekai-proxy:main
-    build: .
-    command: ["supervisord", "-c", "supervisord.conf"]
+  tailscale:
+    image: tailscale/tailscale:stable
+    hostname: sekai-proxy
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: sekai-proxy
+      TS_USERSPACE: "false"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_EXTRA_ARGS: --advertise-exit-node
     volumes:
-      - ./data/mitmproxy:/app/data/mitmproxy
+      - ./data/tailscale:/var/lib/tailscale
+      - ./tailscale/entrypoint.sh:/entrypoint.sh:ro
+    # proxy shares this network namespace, so its ports are published here
     ports:
       - 8080:8080
       - 127.0.0.1:8081:8081
       - 127.0.0.1:8082:8082
       - 51820:51820/udp
       - 51821:51821
+    restart: unless-stopped
+
+  proxy:
+    image: ghcr.io/e8035669/sekai-proxy:main
+    build: .
+    command: ["supervisord", "-c", "supervisord.conf"]
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    volumes:
+      - ./data/mitmproxy:/app/data/mitmproxy
+    restart: unless-stopped
 
