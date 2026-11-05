@@ -11,6 +11,7 @@ from mitmproxy import http, ctx
 from mitmproxy.addonmanager import Loader
 from utils import SekaiTool, NetworkPackage
 from manager import QueueManager
+from holodori import capture as holodori_capture
 
 PATTERNS = [
     r'https://.*\.colorfulpalette\.org/.*/mysekai\?isForceAllReloadOnlyMysekai=(True|False)',
@@ -124,7 +125,20 @@ class ShowSekai:
                 except Exception as ex:
                     print('Error on save packet:', type(ex), ex)
 
+    def handle_holodori_flow(self, flow: http.HTTPFlow):
+        data = flow.response.raw_content
+        if data:
+            print('holodori packet:', flow.request.path)
+            pack = NetworkPackage(flow.request.pretty_url, data, 'holodori')
+            self.data_sender.send_data(pack)
+
     def response(self, flow: http.HTTPFlow):
+        if flow.response and holodori_capture.is_target(
+                flow.request.host, flow.request.path,
+                flow.response.headers.get('content-type', '')):
+            self.handle_holodori_flow(flow)
+            return
+
         if 'colorfulpalette.org' in flow.request.pretty_url:
             print(flow.request.pretty_url)
 

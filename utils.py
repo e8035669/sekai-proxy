@@ -133,6 +133,7 @@ class DiamondPlace:
 class NetworkPackage:
     url: str
     data: bytes
+    kind: str = 'sekai'
 
 
 @dataclass

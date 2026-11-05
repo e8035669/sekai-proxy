@@ -13,6 +13,7 @@ COPY ./addon.py /app/addon.py
 COPY ./webapp.py /app/webapp.py
 COPY ./utils.py /app/utils.py
 COPY ./manager.py /app/manager.py
+COPY ./holodori /app/holodori
 COPY ./supervisord.conf /app/supervisord.conf
 COPY ./asset /app/asset
 EXPOSE 8000

@@ -10,6 +10,7 @@ import json
 
 from utils import DiamondPlace, ResourcePlace, SekaiMapDraw, SekaiResources, SekaiTool, NetworkPackage
 from manager import QueueManager
+from holodori import capture as holodori_capture
 
 
 class DequeLogger(logging.Handler):
@@ -45,6 +46,14 @@ class LastHarvestMapStatus:
     current_ids: dict[str, set[int]] = field(default_factory=dict)
 
 
+@dataclass
+class HdbestEntry:
+    user_id: str
+    summary: dict
+    data: bytes
+    last_update: float = field(default_factory=time.time)
+
+
 class Storage:
     INSTANCE = None
 
@@ -67,7 +76,8 @@ class Storage:
         self.event = Event[str]()
         self.last_found_diamonds: dict[str, LastDiamondStatus] = {}
         self.last_harvest_map: dict[str, LastHarvestMapStatus] = {}
-        pass
+        self.hdbest_event = Event[str]()
+        self.last_hdbest: dict[str, HdbestEntry] = {}
 
     @classmethod
     def instance(cls):
@@ -102,6 +112,11 @@ class Storage:
 
         exist_ids = SekaiTool.current_exist_ids(harvest_maps)
         status.current_ids = exist_ids
+
+    def update_hdbest(self, hdbest: holodori_capture.Hdbest):
+        self.last_hdbest[hdbest.public_user_id] = HdbestEntry(
+            hdbest.public_user_id, hdbest.summary, hdbest.data)
+        self.hdbest_event.emit(hdbest.public_user_id)
 
     def emit_event(self, user_id):
         self.event.emit(user_id)
@@ -149,6 +164,23 @@ def try_find_diamond(pack: NetworkPackage):
         logger.error('Exception: %s %s', type(ex), ex)
 
 
+def try_capture_hdbest(pack: NetworkPackage):
+    logger = logging.getLogger()
+    path = pack.url.split('?', 1)[0]
+    try:
+        hdbest = holodori_capture.build_hdbest(path, pack.data)
+        if hdbest is None:
+            logger.info('holodori: no usable snapshot in %s', path)
+            return
+        logger.info('holodori: captured %s (%s cards, %s songs)',
+                    hdbest.public_user_id, hdbest.summary['cards'],
+                    hdbest.summary['songs'])
+        Storage.instance().update_hdbest(hdbest)
+    except Exception as ex:
+        logger.error('holodori decode failed on %s: %s %s', path, type(ex),
+                     ex)
+
+
 async def background_handle():
     logger = logging.getLogger()
     manager = QueueManager(address=('', 50000), authkey=b'abracadabra')
@@ -161,7 +193,11 @@ async def background_handle():
             pack: NetworkPackage = queue.get_nowait()
             logger.info('get pack for: %s', pack.url)
             logger.info('get data %s bytes', len(pack.data))
-            try_find_diamond(pack)
+            if pack.kind == 'holodori':
+                # schema fetch may block on the network
+                await run.io_bound(try_capture_hdbest, pack)
+            else:
+                try_find_diamond(pack)
         except Empty:
             pass
 
@@ -200,12 +236,6 @@ def show_messages():
 class InitialPage():
 
     def __init__(self):
-
-        with ui.header().classes('items-center'):
-            with ui.row().classes('w-full max-w-3xl mx-auto'):
-                ui.label('Sekai Treasure').props('color=white').classes(
-                    'text-xl')
-
         with ui.column().classes('w-full max-w-3xl mx-auto'):
             ui.label('初始設定').classes('text-h5')
             ui.label('請先輸入帳號id')
@@ -229,14 +259,6 @@ class MainPage():
         pass
 
     async def show(self):
-        with ui.header().classes('items-center'):
-            with ui.row().classes('w-full max-w-3xl mx-auto'):
-                ui.label('Sekai Treasure').props('color=white').classes(
-                    'text-xl')
-                ui.space()
-                (ui.button(icon='logout', on_click=self.logout)  # 
-                 .props('flat round dense color=white'))
-
         with ui.column().classes('w-full max-w-3xl mx-auto'):
             self.current_id = app.storage.user['user_id']
             ui.label(f'Current ID: {self.current_id}')
@@ -435,18 +457,85 @@ class MainPage():
                         ui.item_label(f'Spawn Limit: {spawn_limit}').props(
                             'caption')
 
-    def logout(self):
-        app.storage.user.pop('user_id')
-        ui.navigate.reload()
+class HolodoriPage():
+
+    def __init__(self):
+        self.event = Storage.instance().hdbest_event
+        self.event.subscribe(self.on_update_event)
+
+    def on_update_event(self, msg: str):
+        self.show_profiles.refresh()
+
+    @staticmethod
+    def download(entry: HdbestEntry):
+        ui.download.content(entry.data, f'{entry.user_id}.hdbest',
+                            'application/gzip')
+
+    def show(self):
+        with ui.column().classes('w-full max-w-3xl mx-auto'):
+            ui.label('Holodori').classes('text-h5')
+            ui.label('將遊戲連線到本 proxy 後，進入遊戲主畫面即會自動擷取帳號資料，'
+                     '並保留每個帳號最新的 .hdbest 供下載。').classes('text-gray-500')
+            self.show_profiles()
+
+    @ui.refreshable_method
+    def show_profiles(self):
+        entries = sorted(Storage.instance().last_hdbest.values(),
+                         key=lambda e: e.last_update,
+                         reverse=True)
+        if not entries:
+            ui.label('Waiting for network packets...')
+            return
+        for entry in entries:
+            info = entry.summary
+            last_update = datetime.fromtimestamp(entry.last_update)
+            last_update = last_update.isoformat(sep=' ', timespec='seconds')
+            with ui.card().classes('w-full'):
+                with ui.card_section():
+                    ui.label(f"{info['userName']} ({entry.user_id})").classes(
+                        'text-lg font-bold')
+                    ui.label(f"Cards: {info['cards']}  "
+                             f"Songs: {info['songs']}  "
+                             f"Holomems: {info['holomems']}")
+                    ui.label(f'Last update: {last_update}').classes(
+                        'text-sm text-gray-500')
+                with ui.card_actions():
+                    ui.button(
+                        f'下載 {entry.user_id}.hdbest',
+                        icon='download',
+                        on_click=lambda _, e=entry: self.download(e),
+                    )
+
+
+def logout():
+    app.storage.user.pop('user_id', None)
+    ui.navigate.reload()
 
 
 @ui.page('/')
 async def main():
-    if 'user_id' not in app.storage.user:
-        InitialPage()
-    else:
-        main_page = MainPage()
-        await main_page.show()
+    logged_in = 'user_id' in app.storage.user
+
+    with ui.header().classes('items-center'):
+        with ui.row().classes('w-full max-w-3xl mx-auto items-center'):
+            ui.label('Sekai Treasure').props('color=white').classes('text-xl')
+            ui.space()
+            if logged_in:
+                (ui.button(icon='logout', on_click=logout)
+                 .props('flat round dense color=white'))
+
+    with ui.tabs().classes('w-full max-w-3xl mx-auto') as tabs:
+        tab_sekai = ui.tab('Sekai')
+        tab_holodori = ui.tab('Holodori')
+
+    with ui.tab_panels(tabs, value=tab_sekai).classes('w-full'):
+        with ui.tab_panel(tab_sekai):
+            if not logged_in:
+                InitialPage()
+            else:
+                await MainPage().show()
+        with ui.tab_panel(tab_holodori):
+            HolodoriPage().show()
 
 
 # @ui.page('/')
