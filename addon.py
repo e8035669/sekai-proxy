@@ -133,11 +133,13 @@ class ShowSekai:
             self.data_sender.send_data(pack)
 
     def response(self, flow: http.HTTPFlow):
-        if flow.response and holodori_capture.is_target(
-                flow.request.host, flow.request.path,
-                flow.response.headers.get('content-type', '')):
-            self.handle_holodori_flow(flow)
-            return
+        if holodori_capture.HOST in flow.request.pretty_url:
+            print(flow.request.pretty_url)
+            if flow.response and holodori_capture.is_target(
+                    flow.request.host, flow.request.path,
+                    flow.response.headers.get('content-type', '')):
+                self.handle_holodori_flow(flow)
+                return
 
         if 'colorfulpalette.org' in flow.request.pretty_url:
             print(flow.request.pretty_url)
