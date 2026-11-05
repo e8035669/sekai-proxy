@@ -133,6 +133,7 @@ class ShowSekai:
             self.data_sender.send_data(pack)
 
     def response(self, flow: http.HTTPFlow):
+        print('Debug:', flow.request.pretty_url)
         if holodori_capture.HOST in flow.request.pretty_url:
             print(flow.request.pretty_url)
             if flow.response and holodori_capture.is_target(
