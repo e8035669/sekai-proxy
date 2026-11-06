@@ -132,7 +132,8 @@ class ShowSekai:
             pack = NetworkPackage(flow.request.pretty_url, data, 'holodori')
             self.data_sender.send_data(pack)
 
-    def response(self, flow: http.HTTPFlow):
+    # def response(self, flow: http.HTTPFlow):
+    def response(self, flow):
         print('Debug:', flow.request.pretty_url)
         if holodori_capture.HOST in flow.request.pretty_url:
             print(flow.request.pretty_url)
