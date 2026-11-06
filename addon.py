@@ -132,10 +132,11 @@ class ShowSekai:
             pack = NetworkPackage(flow.request.pretty_url, data, 'holodori')
             self.data_sender.send_data(pack)
 
-    # def response(self, flow: http.HTTPFlow):
-    def response(self, flow):
-        print('Debug:', flow.request.pretty_url)
+    def response(self, flow: http.HTTPFlow):
         if holodori_capture.HOST in flow.request.pretty_url:
+            # 使用tailscale捕捉後無法信任系統憑證
+            # 使用http proxy無法捕捉到封包
+            # 目前從supervisord.conf 取消捕捉holodori封包 此段功能無效
             print(flow.request.pretty_url)
             if flow.response and holodori_capture.is_target(
                     flow.request.host, flow.request.path,
