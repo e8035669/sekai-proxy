@@ -512,30 +512,32 @@ def logout():
     ui.navigate.reload()
 
 
-@ui.page('/')
-async def main():
-    logged_in = 'user_id' in app.storage.user
-
+def page_header(logged_in: bool = False):
     with ui.header().classes('items-center'):
         with ui.row().classes('w-full max-w-3xl mx-auto items-center'):
             ui.label('Sekai Treasure').props('color=white').classes('text-xl')
+            ui.link('Sekai', '/').classes('text-white')
+            ui.link('Holodori', '/holodori').classes('text-white')
             ui.space()
             if logged_in:
                 (ui.button(icon='logout', on_click=logout)
                  .props('flat round dense color=white'))
 
-    with ui.tabs().classes('w-full max-w-3xl mx-auto') as tabs:
-        tab_sekai = ui.tab('Sekai')
-        tab_holodori = ui.tab('Holodori')
 
-    with ui.tab_panels(tabs, value=tab_sekai).classes('w-full'):
-        with ui.tab_panel(tab_sekai):
-            if not logged_in:
-                InitialPage()
-            else:
-                await MainPage().show()
-        with ui.tab_panel(tab_holodori):
-            HolodoriPage().show()
+@ui.page('/')
+async def main():
+    logged_in = 'user_id' in app.storage.user
+    page_header(logged_in)
+    if not logged_in:
+        InitialPage()
+    else:
+        await MainPage().show()
+
+
+@ui.page('/holodori')
+def holodori():
+    page_header('user_id' in app.storage.user)
+    HolodoriPage().show()
 
 
 # @ui.page('/')
